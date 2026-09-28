@@ -61,8 +61,8 @@ export default function Campaigns() {
                 <div className="ml-auto flex gap-2">
                   {c.status === "draft" && <>
                     <button className="btn-secondary py-1.5" onClick={() => setEditing(c)}>Edit</button>
-                    <button className="btn-primary py-1.5" onClick={() => setLaunching(c)} disabled={!client.twilio_number}
-                      title={client.twilio_number ? "" : "Add a Twilio number in Settings first"}><Rocket size={15} /> Launch</button>
+                    <button className="btn-primary py-1.5" onClick={() => setLaunching(c)}
+                      title={client.twilio_number ? "" : "No Twilio number yet: texts only go out in test (dry-run) mode"}><Rocket size={15} /> Launch</button>
                   </>}
                   {c.status === "active" && <button className="btn-secondary py-1.5" onClick={() => setStatus(c, "paused")}><Pause size={15} /> Pause</button>}
                   {c.status === "paused" && <>

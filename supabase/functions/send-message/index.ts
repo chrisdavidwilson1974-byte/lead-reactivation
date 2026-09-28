@@ -26,10 +26,11 @@ Deno.serve(async (req) => {
   // deno-lint-ignore no-explicit-any
   const client = conv.client as any;
   if (contact?.opted_out) return json({ error: "This contact has opted out. You can't text them." }, 409);
-  if (!client?.twilio_number) return json({ error: "No Twilio number set for this client" }, 409);
+  const dryRun = Deno.env.get("TWILIO_DRY_RUN") === "true";
+  if (!client?.twilio_number && !dryRun) return json({ error: "No Twilio number set for this client" }, 409);
 
   const { data: { user } } = await asUser.auth.getUser();
-  const r = await sendSms(client.twilio_number, contact.phone, text);
+  const r = await sendSms(client?.twilio_number ?? "", contact.phone, text);
 
   const db = adminClient();
   const { data: msg } = await db.from("messages").insert({

@@ -108,6 +108,19 @@ Supabase → **SQL Editor**. Paste in `supabase/setup/schedule.sql`, replace
 5. Text the number from your own phone. You should get an AI reply and see the
    conversation appear in the Inbox.
 
+### Testing before your Twilio number is live
+
+You can test the whole system without a phone number:
+
+- **Test the AI** (client Settings): chat with the AI to tune its replies.
+- **Simulate a reply** (Inbox): use *Test: simulate a text from someone*, or the
+  *Test: text as them* tab on any conversation. The message runs through the real
+  pipeline (opt-out check, AI reply, status changes, alert emails). Nothing is
+  sent by SMS, and messages are tagged "test".
+- **Dry-run campaigns:** add the Edge Function secret `TWILIO_DRY_RUN` = `true`.
+  Campaigns and manual replies are logged instead of sent, even for a client with
+  no Twilio number yet. Remove the secret when you go live.
+
 ### 8. Run a campaign
 
 1. **Contacts → Import CSV**: map the columns, say where the contacts came from, and confirm consent.

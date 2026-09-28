@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Bot, CheckCheck, PoundSterling, Send, User } from "lucide-react";
+import { Bot, CheckCheck, FlaskConical, PoundSterling, Send, User } from "lucide-react";
 import { callFunction, supabase } from "../lib/supabase";
 import { ALL_STATUSES, ContactStatus, Conversation, Message, STATUS_LABEL } from "../lib/types";
 import { useClient } from "./ClientLayout";
@@ -13,6 +13,7 @@ export default function Inbox() {
   const [filter, setFilter] = useState<"attention" | "all">("all");
   const [search, setSearch] = useState("");
   const [convs, setConvs] = useState<Conversation[] | null>(null);
+  const [testing, setTesting] = useState(false);
 
   const loadConvs = useCallback(async () => {
     let q = supabase.from("conversations").select("*, contact:contacts(*)")
@@ -52,6 +53,10 @@ export default function Inbox() {
             ))}
           </div>
           <input className="input" placeholder="Search name, number or text" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <button className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-amber-400 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-50"
+            onClick={() => setTesting(true)}>
+            <FlaskConical size={13} /> Test: simulate a text from someone
+          </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {!convs ? <Spinner /> : shown.length === 0 ? (
@@ -83,7 +88,54 @@ export default function Inbox() {
           <div className="m-auto"><Empty title="Pick a conversation" /></div>
         )}
       </section>
+      {testing && <SimulateModal clientId={client.id} onClose={() => setTesting(false)}
+        onDone={(id) => { setTesting(false); loadConvs(); setParams({ c: id }); }} />}
     </div>
+  );
+}
+
+function SimulateModal({ clientId, onClose, onDone }: { clientId: string; onClose: () => void; onDone: (conversationId: string) => void }) {
+  const [phone, setPhone] = useState("07700 900000");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function run(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true); setError(null);
+    try {
+      const r = await callFunction<{ conversationId: string }>("simulate-inbound", { client_id: clientId, phone, body });
+      onDone(r.conversationId);
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal title="Simulate an incoming text" onClose={onClose}>
+      <form onSubmit={run} className="space-y-4">
+        <p className="text-sm text-slate-600">
+          Pretend someone texted this client's number. It goes through the real system: opt-out check, AI reply, status
+          updates and alert emails. Nothing is sent by SMS, and replies are marked "simulated".
+        </p>
+        <div>
+          <label className="label">From number</label>
+          <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+          <p className="hint">Use an existing contact's number to test as them, or any made-up UK mobile. A new number creates a test contact.</p>
+        </div>
+        <div>
+          <label className="label">Their message</label>
+          <textarea className="input" rows={3} value={body} onChange={(e) => setBody(e.target.value)} autoFocus required
+            placeholder="e.g. Hi, is the part-ex offer still on?" />
+        </div>
+        <ErrorNote error={error} />
+        <div className="flex justify-end gap-2">
+          <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn bg-amber-500 text-white hover:bg-amber-600" disabled={busy}>
+            <FlaskConical size={15} /> {busy ? "AI is replying…" : "Simulate text"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -95,6 +147,7 @@ function Thread({ conversationId, onBack, onChanged }: { conversationId: string;
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selling, setSelling] = useState(false);
+  const [mode, setMode] = useState<"reply" | "simulate">("reply");
   const bottom = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -132,7 +185,11 @@ function Thread({ conversationId, onBack, onChanged }: { conversationId: string;
     if (!text.trim()) return;
     setSending(true); setError(null);
     try {
-      await callFunction("send-message", { conversation_id: conversationId, body: text, keep_ai: keepAi });
+      if (mode === "simulate") {
+        await callFunction("simulate-inbound", { client_id: conv!.client_id, phone: contact.phone, body: text });
+      } else {
+        await callFunction("send-message", { conversation_id: conversationId, body: text, keep_ai: keepAi });
+      }
       setText("");
       await load();
       onChanged();
@@ -185,25 +242,47 @@ function Thread({ conversationId, onBack, onChanged }: { conversationId: string;
         <div ref={bottom} />
       </div>
 
-      {contact.opted_out ? (
-        <p className="border-t border-slate-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          This person opted out. They can't be texted unless they reply START.
-        </p>
-      ) : (
-        <form onSubmit={send} className="space-y-2 border-t border-slate-200 p-3">
-          <ErrorNote error={error} />
-          <div className="flex gap-2">
-            <textarea className="input min-h-[44px] flex-1 resize-none" rows={2} placeholder="Type a reply…"
-              value={text} onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(e); } }} />
-            <button className="btn-primary self-end" disabled={sending || !text.trim()}><Send size={16} /></button>
-          </div>
-          <label className="flex items-center gap-2 text-xs text-slate-500">
-            <input type="checkbox" checked={keepAi} onChange={(e) => setKeepAi(e.target.checked)} />
-            Let the AI keep replying after my message (otherwise it switches off for this conversation)
-          </label>
-        </form>
-      )}
+      <form onSubmit={send} className={`space-y-2 border-t p-3 ${mode === "simulate" ? "border-amber-300 bg-amber-50" : "border-slate-200"}`}>
+        <div className="flex gap-1 text-xs font-medium">
+          <button type="button" onClick={() => setMode("reply")}
+            className={`rounded-md px-2.5 py-1 ${mode === "reply" ? "bg-brand-500 text-white" : "text-slate-500 hover:bg-slate-100"}`}>
+            Reply to them
+          </button>
+          <button type="button" onClick={() => setMode("simulate")}
+            className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 ${mode === "simulate" ? "bg-amber-500 text-white" : "text-slate-500 hover:bg-slate-100"}`}>
+            <FlaskConical size={13} /> Test: text as them
+          </button>
+        </div>
+        {mode === "simulate" && (
+          <p className="text-xs text-amber-800">
+            Pretend {contact.first_name ?? "this person"} sent this text. It runs through the real system (opt-outs, AI reply,
+            alerts), but nothing is sent by SMS.
+          </p>
+        )}
+        {mode === "reply" && contact.opted_out ? (
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+            This person opted out. They can't be texted unless they reply START.
+          </p>
+        ) : (
+          <>
+            <ErrorNote error={error} />
+            <div className="flex gap-2">
+              <textarea className="input min-h-[44px] flex-1 resize-none" rows={2}
+                placeholder={mode === "simulate" ? "What would they text? e.g. Yes, what's the offer?" : "Type a reply…"}
+                value={text} onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(e); } }} />
+              <button className={`${mode === "simulate" ? "btn bg-amber-500 text-white hover:bg-amber-600" : "btn-primary"} self-end`}
+                disabled={sending || !text.trim()}>{sending && mode === "simulate" ? "…" : <Send size={16} />}</button>
+            </div>
+            {mode === "reply" && (
+              <label className="flex items-center gap-2 text-xs text-slate-500">
+                <input type="checkbox" checked={keepAi} onChange={(e) => setKeepAi(e.target.checked)} />
+                Let the AI keep replying after my message (otherwise it switches off for this conversation)
+              </label>
+            )}
+          </>
+        )}
+      </form>
 
       {selling && <SaleModal contactId={contact.id} onClose={() => setSelling(false)} onDone={() => { setSelling(false); load(); onChanged(); }} />}
     </>
@@ -228,6 +307,7 @@ function Bubble({ m }: { m: Message }) {
           {m.ai_intent && !out && <span className="rounded bg-slate-200 px-1">{m.ai_intent.replace("_", " ")}</span>}
           {out && m.status === "delivered" && <CheckCheck size={12} className="text-emerald-600" />}
           {out && m.error && <span className="text-red-600" title={m.error}>failed</span>}
+          {(m.status === "simulated" || m.status === "dry_run") && <span className="rounded bg-amber-100 px-1 text-amber-800">test</span>}
         </div>
       </div>
     </div>

@@ -11,6 +11,8 @@ import {
 
 const db = adminClient();
 const PER_RUN = parseInt(Deno.env.get("SEND_BATCH_PER_RUN") ?? "60", 10);
+// In dry-run mode campaigns can be tested before a client has a Twilio number.
+const DRY_RUN = Deno.env.get("TWILIO_DRY_RUN") === "true";
 
 // Twilio error codes that mean "this number will never work" -> stop trying.
 const PERMANENT_ERRORS = ["21211", "21612", "21614", "21610", "21408"];
@@ -33,7 +35,7 @@ Deno.serve(async (req) => {
     const result: Record<string, unknown> = { campaign: campaign.name, sent: 0 };
     summary.push(result);
 
-    if (!client?.active || !client.twilio_number) { result.skipped = "client inactive or no number"; continue; }
+    if (!client?.active || (!client.twilio_number && !DRY_RUN)) { result.skipped = "client inactive or no number"; continue; }
     if (!inSendWindow(now, client.timezone, client.send_window_start, client.send_window_end)) {
       result.skipped = "outside sending hours"; continue;
     }
@@ -79,7 +81,7 @@ Deno.serve(async (req) => {
       ).select("id").single();
       if (!conv) continue;
 
-      const r = await sendSms(client.twilio_number, contact.phone, body);
+      const r = await sendSms(client.twilio_number ?? "", contact.phone, body);
 
       await db.from("messages").insert({
         conversation_id: conv.id,
