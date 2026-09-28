@@ -1,0 +1,23 @@
+project_id = "revive"
+
+# Webhooks and the scheduler can't send a Supabase login token,
+# so JWT verification is switched off for them. Each one checks its
+# own signature/secret instead.
+[functions.twilio-inbound]
+verify_jwt = false
+
+[functions.twilio-status]
+verify_jwt = false
+
+[functions.campaign-dispatcher]
+verify_jwt = false
+
+[functions.cal-webhook]
+verify_jwt = false
+
+# Called from the dashboard by logged-in users.
+[functions.send-message]
+verify_jwt = true
+
+[functions.ai-preview]
+verify_jwt = true

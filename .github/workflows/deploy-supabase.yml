@@ -1,0 +1,39 @@
+name: Deploy backend to Supabase
+
+# Runs on GitHub's servers (nothing on your machine). Applies database
+# changes and deploys the Edge Functions whenever supabase/ changes on
+# main, or when you press "Run workflow" on the Actions tab.
+#
+# Needs three repository secrets (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_ACCESS_TOKEN  - supabase.com/dashboard/account/tokens
+#   SUPABASE_PROJECT_REF   - the xxxx in https://xxxx.supabase.co
+#   SUPABASE_DB_PASSWORD   - the database password you set when creating the project
+
+on:
+  push:
+    branches: [main]
+    paths: ["supabase/**", ".github/workflows/deploy-supabase.yml"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link project
+        run: supabase link --project-ref "$PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Apply database migrations
+        run: supabase db push --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Deploy Edge Functions
+        run: supabase functions deploy --project-ref "$PROJECT_REF"
